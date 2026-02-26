@@ -1507,13 +1507,41 @@ async function renderKitchen(el) {
   document.getElementById('start-scan-btn').onclick = () => startScanner();
 }
 
-function startScanner() {
+async function startScanner() {
   const container = document.getElementById('scanner-container');
   if (!container) return;
   container.style.display = 'block';
   const scanBtn = document.getElementById('start-scan-btn');
   if (scanBtn) scanBtn.style.display = 'none';
 
+  // First request camera permission explicitly
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    // Permission granted — stop the stream immediately, html5QrCode will open its own
+    stream.getTracks().forEach(t => t.stop());
+  } catch (permErr) {
+    // Show user-friendly message with instructions
+    let msg = 'Kamera-adgang blev afvist.';
+    if (permErr.name === 'NotAllowedError') {
+      msg = 'Du skal give tilladelse til kameraet.<br><br>'
+        + '<strong>iPhone/Safari:</strong> Tryk på "Aa" i adresselinjen → Webstedsindstillinger → Kamera → Tillad<br><br>'
+        + '<strong>Android/Chrome:</strong> Tryk på låse-ikonet i adresselinjen → Tilladelser → Kamera → Tillad';
+    } else if (permErr.name === 'NotFoundError') {
+      msg = 'Ingen kamera fundet på denne enhed.';
+    } else if (permErr.name === 'NotReadableError') {
+      msg = 'Kameraet er i brug af en anden app. Luk andre apps og prøv igen.';
+    }
+    container.innerHTML = `<div class="empty-state" style="padding:20px">
+      ${icon('camera-off')}
+      <p>${msg}</p>
+      <button class="btn btn-primary" style="margin-top:12px" onclick="retryScanner()">Prøv igen</button>
+    </div>`;
+    lucide.createIcons({ nodes: [container] });
+    scannerRunning = false;
+    return;
+  }
+
+  // Permission OK — start the barcode scanner
   if (html5QrCode) { try { html5QrCode.clear(); } catch(e) {} }
   html5QrCode = new Html5Qrcode("scanner-container");
   scannerRunning = true;
@@ -1536,9 +1564,18 @@ function startScanner() {
     },
     () => {}
   ).catch(err => {
-    container.innerHTML = `<div class="empty-state" style="padding:20px">${icon('camera-off')}<p>Kunne ikke starte kamera: ${err}</p></div>`;
+    container.innerHTML = `<div class="empty-state" style="padding:20px">${icon('camera-off')}<p>Kunne ikke starte scanner: ${err}</p>
+      <button class="btn btn-primary" style="margin-top:12px" onclick="retryScanner()">Prøv igen</button></div>`;
     lucide.createIcons({ nodes: [container] });
   });
+}
+
+function retryScanner() {
+  const scanBtn = document.getElementById('start-scan-btn');
+  if (scanBtn) scanBtn.style.display = '';
+  const container = document.getElementById('scanner-container');
+  if (container) { container.style.display = 'none'; container.innerHTML = ''; }
+  startScanner();
 }
 
 async function handleBarcodeScan(code) {
