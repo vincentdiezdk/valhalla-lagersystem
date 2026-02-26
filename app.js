@@ -69,20 +69,58 @@ window.addEventListener('hashchange', () => {
   render();
 });
 
-// ─── Image Utils ───────────────────────────────────────────────────────
-function resizeAndConvert(file, maxW = 800) {
-  return new Promise((resolve) => {
+// ─── Image Engine (WebP, resize, auto-cleanup) ───────────────────────
+const IMG_MAX_WIDTH  = 800;   // max bredde i px
+const IMG_MAX_HEIGHT = 800;   // max højde i px
+const IMG_QUALITY    = 0.75;  // 0-1 kvalitet (0.75 ≈ god balance)
+const IMG_FORMAT     = 'image/webp'; // WebP = ~30-50% mindre end JPEG
+const IMG_EXT        = '.webp';
+
+// Tjek om browseren understøtter WebP-encoding
+const WEBP_SUPPORTED = (() => {
+  try {
+    const c = document.createElement('canvas');
+    return c.toDataURL('image/webp').startsWith('data:image/webp');
+  } catch { return false; }
+})();
+
+function optimizeImage(file, maxW = IMG_MAX_WIDTH, maxH = IMG_MAX_HEIGHT, quality = IMG_QUALITY) {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Kunne ikke læse billedfilen'));
     reader.onload = (e) => {
       const img = new Image();
+      img.onerror = () => reject(new Error('Ugyldigt billedformat'));
       img.onload = () => {
         const canvas = document.createElement('canvas');
         let w = img.width, h = img.height;
-        if (w > maxW) { h = (maxW / w) * h; w = maxW; }
+
+        // Scale ned så det passer inden for maxW × maxH
+        if (w > maxW || h > maxH) {
+          const ratio = Math.min(maxW / w, maxH / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
         canvas.width = w;
         canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.8);
+
+        // Tegn med høj kvalitet
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, w, h);
+
+        // WebP hvis understøttet, ellers JPEG som fallback
+        const format = WEBP_SUPPORTED ? IMG_FORMAT : 'image/jpeg';
+        const ext    = WEBP_SUPPORTED ? IMG_EXT : '.jpg';
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) { reject(new Error('Billedkonvertering fejlede')); return; }
+            resolve({ blob, format, ext, originalSize: file.size, optimizedSize: blob.size });
+          },
+          format,
+          quality
+        );
       };
       img.src = e.target.result;
     };
@@ -90,10 +128,32 @@ function resizeAndConvert(file, maxW = 800) {
   });
 }
 
-async function uploadImage(blob, prefix = 'item') {
-  const filename = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+// Hent filnavnet fra en Supabase Storage public URL
+function storageFilename(url) {
+  if (!url || !url.includes('/storage/v1/object/public/images/')) return null;
+  try {
+    const parts = url.split('/storage/v1/object/public/images/');
+    return parts[1] ? decodeURIComponent(parts[1].split('?')[0]) : null;
+  } catch { return null; }
+}
+
+// Slet et gammelt billede fra Supabase Storage
+async function deleteStorageImage(publicUrl) {
+  const filename = storageFilename(publicUrl);
+  if (!filename) return;
+  try {
+    await supabase.storage.from('images').remove([filename]);
+  } catch (e) {
+    console.warn('Kunne ikke slette gammelt billede:', e.message);
+  }
+}
+
+async function uploadImage(blob, prefix = 'item', format, ext) {
+  const contentType = format || (WEBP_SUPPORTED ? IMG_FORMAT : 'image/jpeg');
+  const fileExt = ext || (WEBP_SUPPORTED ? IMG_EXT : '.jpg');
+  const filename = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${fileExt}`;
   const { error } = await supabase.storage.from('images').upload(filename, blob, {
-    contentType: 'image/jpeg',
+    contentType,
     upsert: false
   });
   if (error) throw new Error('Billedupload fejlede: ' + error.message);
@@ -902,14 +962,24 @@ async function showItemForm(editId) {
     </div>`);
 
   // Image handler
-  let imageBlob = null;
+  let imageResult = null;
   document.getElementById('item-image-input').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    imageBlob = await resizeAndConvert(file);
-    const previewUrl = URL.createObjectURL(imageBlob);
     const area = document.getElementById('image-upload-area');
-    area.innerHTML = `<img src="${previewUrl}" class="image-preview">`;
+    area.innerHTML = `<div style="padding:20px;text-align:center"><span class="spinner" style="width:24px;height:24px;border-width:2px;display:inline-block"></span><p style="margin-top:8px;font-size:0.82rem;color:var(--text-3)">Optimerer billede...</p></div>`;
+    try {
+      imageResult = await optimizeImage(file);
+      const previewUrl = URL.createObjectURL(imageResult.blob);
+      const savedPct = imageResult.originalSize > 0
+        ? Math.round((1 - imageResult.optimizedSize / imageResult.originalSize) * 100)
+        : 0;
+      const sizeKB = Math.round(imageResult.optimizedSize / 1024);
+      area.innerHTML = `<img src="${previewUrl}" class="image-preview"><p style="text-align:center;font-size:0.78rem;color:var(--text-3);margin-top:4px">${WEBP_SUPPORTED ? 'WebP' : 'JPEG'} · ${sizeKB} KB · ${savedPct}% mindre</p>`;
+    } catch (err) {
+      area.innerHTML = `${icon('camera')}<p>Fejl: ${err.message}</p>`;
+      imageResult = null;
+    }
   };
 
   // Save handler
@@ -920,9 +990,14 @@ async function showItemForm(editId) {
     const catIds = Array.from(catCheckboxes).map(cb => cb.value);
 
     let imageUrl = item?.image_url || '';
-    if (imageBlob) {
+    const oldImageUrl = item?.image_url || '';
+    if (imageResult) {
       try {
-        imageUrl = await uploadImage(imageBlob, 'item');
+        imageUrl = await uploadImage(imageResult.blob, 'item', imageResult.format, imageResult.ext);
+        // Slet det gamle billede fra Storage hvis der var et
+        if (oldImageUrl && oldImageUrl !== imageUrl) {
+          deleteStorageImage(oldImageUrl); // fire-and-forget
+        }
       } catch (err) {
         toast(err.message, 'error');
         return;
@@ -974,9 +1049,13 @@ async function showItemForm(editId) {
 async function deleteItem(id) {
   if (!confirm('Er du sikker på at du vil slette denne genstand?')) return;
   try {
+    // Hent billedets URL først så vi kan slette fra Storage
+    const { data: item } = await supabase.from('items').select('image_url').eq('id', id).single();
     // item_categories will cascade
     const { error } = await supabase.from('items').delete().eq('id', id);
     if (error) throw error;
+    // Slet billedet fra Storage (fire-and-forget)
+    if (item?.image_url) deleteStorageImage(item.image_url);
     toast('Genstand slettet');
     closeModal();
     cachedData.items = null;
@@ -1347,14 +1426,21 @@ async function showReportForm(preselectedItemId, preselectedType) {
       <button class="btn btn-primary" id="report-save-btn">Indsend rapport</button>
     </div>`);
 
-  let imageBlob = null;
+  let reportImageResult = null;
   document.getElementById('report-image-input').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    imageBlob = await resizeAndConvert(file);
-    const previewUrl = URL.createObjectURL(imageBlob);
     const area = document.getElementById('report-image-area');
-    area.innerHTML = `<img src="${previewUrl}" class="image-preview">`;
+    area.innerHTML = `<div style="padding:20px;text-align:center"><span class="spinner" style="width:24px;height:24px;border-width:2px;display:inline-block"></span><p style="margin-top:8px;font-size:0.82rem;color:var(--text-3)">Optimerer billede...</p></div>`;
+    try {
+      reportImageResult = await optimizeImage(file);
+      const previewUrl = URL.createObjectURL(reportImageResult.blob);
+      const sizeKB = Math.round(reportImageResult.optimizedSize / 1024);
+      area.innerHTML = `<img src="${previewUrl}" class="image-preview"><p style="text-align:center;font-size:0.78rem;color:var(--text-3);margin-top:4px">${WEBP_SUPPORTED ? 'WebP' : 'JPEG'} · ${sizeKB} KB</p>`;
+    } catch (err) {
+      area.innerHTML = `${icon('camera')}<p>Fejl: ${err.message}</p>`;
+      reportImageResult = null;
+    }
   };
 
   document.getElementById('report-save-btn').onclick = async () => {
@@ -1362,8 +1448,8 @@ async function showReportForm(preselectedItemId, preselectedType) {
     if (!itemId) { toast('Vælg en genstand', 'error'); return; }
     try {
       let imageUrl = '';
-      if (imageBlob) {
-        imageUrl = await uploadImage(imageBlob, 'report');
+      if (reportImageResult) {
+        imageUrl = await uploadImage(reportImageResult.blob, 'report', reportImageResult.format, reportImageResult.ext);
       }
       const { error } = await supabase.from('reports').insert({
         item_id: itemId,
