@@ -2409,7 +2409,7 @@ async function renderHistory(el) {
 
     let query = sb
       .from('activity_log')
-      .select('*, profiles!activity_log_user_id_fkey(display_name)')
+      .select('*, profiles!activity_log_user_id_fkey_profiles(display_name)')
       .order('created_at', { ascending: false })
       .range(offset, offset + pageSize - 1);
 
@@ -2504,7 +2504,7 @@ function renderHistoryList(entries) {
 async function exportHistoryPDF() {
   try {
     const { data: entries } = await sb.from('activity_log')
-      .select('*, profiles!activity_log_user_id_fkey(display_name)')
+      .select('*, profiles!activity_log_user_id_fkey_profiles(display_name)')
       .order('created_at', { ascending: false })
       .limit(200);
 
