@@ -844,6 +844,7 @@ async function renderItems(el) {
           <button class="view-toggle-btn active" data-view="grid" title="Gittervisning">${icon('grid-3x3')} </button>
           <button class="view-toggle-btn" data-view="list" title="Listevisning">${icon('list')}</button>
         </div>
+        ${isAdmin() ? `<button class="btn btn-outline btn-sm" onclick="showQRPrintSheet()">${icon('qr-code')} QR-ark</button>` : ''}
         ${isAdmin() ? `<button class="btn btn-outline btn-sm" onclick="exportItemsPDF()">${icon('file-down')} PDF</button>` : ''}
         ${isAdmin() ? `<button class="btn btn-primary btn-sm" onclick="showItemForm()">${icon('plus')} Tilføj nyt</button>` : ''}
       </div>
@@ -1329,6 +1330,175 @@ function printQRLabel(itemId, itemName) {
     <\/script>
   </body></html>`);
   win.document.close();
+}
+
+// ─── QR Print Sheet ──────────────────────────────────────────────────
+async function showQRPrintSheet() {
+  const { data: items } = await sb.from('items').select('id, name').order('name');
+  const { data: sets } = await sb.from('item_sets').select('id, name').order('name');
+  const allEntries = [
+    ...(items || []).map(i => ({ id: i.id, name: i.name, type: 'item' })),
+    ...(sets || []).map(s => ({ id: s.id, name: s.name, type: 'set' }))
+  ];
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <h2>${icon('qr-code')} QR-ark til print</h2>
+      <button class="modal-close" onclick="closeModal()">${icon('x')}</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-3);font-size:0.85rem;margin-bottom:12px">V\u00e6lg de materialer der skal med p\u00e5 QR-arket. De bliver lagt ud i et gitter klar til A4-print.</p>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.qr-sheet-cb').forEach(c=>c.checked=true)">${icon('check-square')} V\u00e6lg alle</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.qr-sheet-cb').forEach(c=>c.checked=false)">${icon('square')} Frav\u00e6lg alle</button>
+      </div>
+      <div class="qr-sheet-list">
+        ${allEntries.map(e => `
+          <label class="qr-sheet-row">
+            <input type="checkbox" class="qr-sheet-cb" value="${e.id}" data-name="${esc(e.name)}" data-type="${e.type}" checked>
+            <span class="qr-sheet-label">${e.type === 'set' ? icon('boxes') : icon('package')} ${esc(e.name)}</span>
+          </label>
+        `).join('')}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Annull\u00e9r</button>
+      <button class="btn btn-primary" onclick="printQRSheet()">${icon('printer')} Udskriv QR-ark</button>
+    </div>`);
+}
+
+function printQRSheet() {
+  const checked = Array.from(document.querySelectorAll('.qr-sheet-cb:checked')).map(cb => ({
+    id: cb.value,
+    name: cb.dataset.name
+  }));
+  if (checked.length === 0) { toast('V\u00e6lg mindst \u00e9n genstand', 'error'); return; }
+
+  const win = window.open('', '_blank', 'width=900,height=700');
+  const qrItems = JSON.stringify(checked);
+
+  win.document.write(`<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Valhalla QR-ark</title>
+<link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+<style>
+  @page { size: A4; margin: 12mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Source Sans 3', sans-serif;
+    padding: 12mm;
+    background: #fff;
+  }
+  .sheet-header {
+    text-align: center;
+    margin-bottom: 8mm;
+    padding-bottom: 4mm;
+    border-bottom: 2px solid #003366;
+  }
+  .sheet-header h1 {
+    font-family: 'Alfa Slab One', serif;
+    font-size: 18px;
+    color: #003366;
+    letter-spacing: 0.5px;
+  }
+  .sheet-header p {
+    font-size: 10px;
+    color: #888;
+    margin-top: 2px;
+  }
+  .qr-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5mm;
+    justify-items: center;
+  }
+  .qr-cell {
+    border: 2px dashed #003366;
+    border-radius: 12px;
+    padding: 4mm 3mm 3mm;
+    text-align: center;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    page-break-inside: avoid;
+  }
+  .qr-cell .qr-box {
+    width: 30mm;
+    height: 30mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .qr-cell .qr-box img {
+    width: 30mm !important;
+    height: 30mm !important;
+  }
+  .qr-cell .qr-box canvas {
+    width: 30mm !important;
+    height: 30mm !important;
+  }
+  .qr-cell .qr-name {
+    font-family: 'Alfa Slab One', serif;
+    font-size: 9px;
+    color: #003366;
+    margin-top: 2mm;
+    word-break: break-word;
+    line-height: 1.25;
+    max-width: 100%;
+  }
+  @media print {
+    body { padding: 0; }
+    .no-print { display: none; }
+  }
+</style>
+</head><body>
+<div class="no-print" style="text-align:center;padding:16px;background:#f5f7fa;margin-bottom:16px;border-radius:8px">
+  <p style="font-size:14px;color:#003366;font-weight:600">QR-arket er klar. Tryk Ctrl+P eller klik nedenfor for at printe.</p>
+  <button onclick="window.print()" style="margin-top:8px;padding:10px 24px;background:#003366;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600">\ud83d\udda8 Udskriv</button>
+</div>
+<div class="sheet-header">
+  <h1>Valhalla Gruppe \u2013 QR-koder</h1>
+  <p>Udskrevet ${new Date().toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+</div>
+<div class="qr-grid" id="qr-grid"></div>
+<script>
+  var items = ${qrItems};
+  var grid = document.getElementById('qr-grid');
+  items.forEach(function(item) {
+    var cell = document.createElement('div');
+    cell.className = 'qr-cell';
+    var box = document.createElement('div');
+    box.className = 'qr-box';
+    cell.appendChild(box);
+    var label = document.createElement('div');
+    label.className = 'qr-name';
+    label.textContent = item.name;
+    cell.appendChild(label);
+    grid.appendChild(cell);
+    new QRCode(box, {
+      text: item.id,
+      width: 200,
+      height: 200,
+      colorDark: '#003366',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  });
+  setTimeout(function() {
+    // Clean up QRCode.js extra images
+    document.querySelectorAll('.qr-box img').forEach(function(img) {
+      img.style.width = '30mm';
+      img.style.height = '30mm';
+    });
+  }, 300);
+<\/script>
+</body></html>`);
+  win.document.close();
+  closeModal();
 }
 
 async function showItemForm(editId) {
