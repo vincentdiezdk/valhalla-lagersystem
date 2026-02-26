@@ -1348,8 +1348,25 @@ async function showQRPrintSheet() {
       <button class="modal-close" onclick="closeModal()">${icon('x')}</button>
     </div>
     <div class="modal-body">
-      <p style="color:var(--text-3);font-size:0.85rem;margin-bottom:12px">V\u00e6lg de materialer der skal med p\u00e5 QR-arket. De bliver lagt ud i et gitter klar til A4-print.</p>
-      <div style="display:flex;gap:8px;margin-bottom:14px">
+      <p style="color:var(--text-3);font-size:0.85rem;margin-bottom:12px">V\u00e6lg materialer, st\u00f8rrelse og indstillinger til QR-arket.</p>
+
+      <div class="qr-sheet-options">
+        <div class="form-group" style="margin-bottom:10px">
+          <label style="font-weight:600;font-size:0.85rem">St\u00f8rrelse</label>
+          <div class="filter-chips" id="qr-size-chips">
+            <button class="filter-chip" data-size="small">${icon('minimize-2')} Lille</button>
+            <button class="filter-chip active" data-size="medium">${icon('square')} Medium</button>
+            <button class="filter-chip" data-size="large">${icon('maximize-2')} Stor</button>
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-3);margin-top:4px" id="qr-size-hint">4 pr. r\u00e6kke \u2013 god til de fleste ting</div>
+        </div>
+        <label class="qr-sheet-row" style="border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:10px">
+          <input type="checkbox" id="qr-show-valhalla" checked style="width:18px;height:18px;accent-color:var(--navy)">
+          <span class="qr-sheet-label">${icon('compass')} Vis "Valhalla Gruppe" p\u00e5 label</span>
+        </label>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:10px">
         <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.qr-sheet-cb').forEach(c=>c.checked=true)">${icon('check-square')} V\u00e6lg alle</button>
         <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.qr-sheet-cb').forEach(c=>c.checked=false)">${icon('square')} Frav\u00e6lg alle</button>
       </div>
@@ -1366,6 +1383,16 @@ async function showQRPrintSheet() {
       <button class="btn btn-ghost" onclick="closeModal()">Annull\u00e9r</button>
       <button class="btn btn-primary" onclick="printQRSheet()">${icon('printer')} Udskriv QR-ark</button>
     </div>`);
+
+  const sizeHints = { small: '6 pr. r\u00e6kke \u2013 perfekt til sm\u00e5 ting som v\u00e6rkt\u00f8j', medium: '4 pr. r\u00e6kke \u2013 god til de fleste ting', large: '2 pr. r\u00e6kke \u2013 store labels til telte o.l.' };
+  document.querySelectorAll('#qr-size-chips .filter-chip').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('#qr-size-chips .filter-chip').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const hint = document.getElementById('qr-size-hint');
+      if (hint) hint.textContent = sizeHints[btn.dataset.size] || '';
+    };
+  });
 }
 
 function printQRSheet() {
@@ -1374,6 +1401,17 @@ function printQRSheet() {
     name: cb.dataset.name
   }));
   if (checked.length === 0) { toast('V\u00e6lg mindst \u00e9n genstand', 'error'); return; }
+
+  const sizeBtn = document.querySelector('#qr-size-chips .filter-chip.active');
+  const size = sizeBtn ? sizeBtn.dataset.size : 'medium';
+  const showValhalla = document.getElementById('qr-show-valhalla')?.checked ?? true;
+
+  const sizeConfig = {
+    small:  { cols: 6, qrMM: 18, fontSize: 7,  padding: '2.5mm 2mm 2mm', gap: '3mm', qrPx: 150, nameFontSize: '7px', valhallaSize: '5.5px', borderRadius: '8px' },
+    medium: { cols: 4, qrMM: 30, fontSize: 9,  padding: '4mm 3mm 3mm',   gap: '5mm', qrPx: 200, nameFontSize: '9px',  valhallaSize: '7px',   borderRadius: '12px' },
+    large:  { cols: 2, qrMM: 55, fontSize: 14, padding: '5mm 4mm 4mm',   gap: '6mm', qrPx: 300, nameFontSize: '14px', valhallaSize: '10px',  borderRadius: '14px' }
+  };
+  const cfg = sizeConfig[size];
 
   const win = window.open('', '_blank', 'width=900,height=700');
   const qrItems = JSON.stringify(checked);
@@ -1411,14 +1449,14 @@ function printQRSheet() {
   }
   .qr-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 5mm;
+    grid-template-columns: repeat(${cfg.cols}, 1fr);
+    gap: ${cfg.gap};
     justify-items: center;
   }
   .qr-cell {
     border: 2px dashed #003366;
-    border-radius: 12px;
-    padding: 4mm 3mm 3mm;
+    border-radius: ${cfg.borderRadius};
+    padding: ${cfg.padding};
     text-align: center;
     width: 100%;
     display: flex;
@@ -1427,25 +1465,33 @@ function printQRSheet() {
     page-break-inside: avoid;
   }
   .qr-cell .qr-box {
-    width: 30mm;
-    height: 30mm;
+    width: ${cfg.qrMM}mm;
+    height: ${cfg.qrMM}mm;
     display: flex;
     align-items: center;
     justify-content: center;
   }
   .qr-cell .qr-box img {
-    width: 30mm !important;
-    height: 30mm !important;
+    width: ${cfg.qrMM}mm !important;
+    height: ${cfg.qrMM}mm !important;
   }
   .qr-cell .qr-box canvas {
-    width: 30mm !important;
-    height: 30mm !important;
+    width: ${cfg.qrMM}mm !important;
+    height: ${cfg.qrMM}mm !important;
+  }
+  .qr-cell .qr-valhalla {
+    font-family: 'Alfa Slab One', serif;
+    font-size: ${cfg.valhallaSize};
+    color: #003366;
+    margin-top: 1.5mm;
+    opacity: 0.5;
+    letter-spacing: 0.3px;
   }
   .qr-cell .qr-name {
     font-family: 'Alfa Slab One', serif;
-    font-size: 9px;
+    font-size: ${cfg.nameFontSize};
     color: #003366;
-    margin-top: 2mm;
+    margin-top: ${showValhalla ? '0.5mm' : '2mm'};
     word-break: break-word;
     line-height: 1.25;
     max-width: 100%;
@@ -1462,11 +1508,12 @@ function printQRSheet() {
 </div>
 <div class="sheet-header">
   <h1>Valhalla Gruppe \u2013 QR-koder</h1>
-  <p>Udskrevet ${new Date().toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+  <p>Udskrevet ${new Date().toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' })} \u00b7 ${checked.length} labels \u00b7 ${size === 'small' ? 'Lille' : size === 'large' ? 'Stor' : 'Medium'}</p>
 </div>
 <div class="qr-grid" id="qr-grid"></div>
 <script>
   var items = ${qrItems};
+  var showValhalla = ${showValhalla};
   var grid = document.getElementById('qr-grid');
   items.forEach(function(item) {
     var cell = document.createElement('div');
@@ -1474,6 +1521,12 @@ function printQRSheet() {
     var box = document.createElement('div');
     box.className = 'qr-box';
     cell.appendChild(box);
+    if (showValhalla) {
+      var vh = document.createElement('div');
+      vh.className = 'qr-valhalla';
+      vh.textContent = 'Valhalla Gruppe';
+      cell.appendChild(vh);
+    }
     var label = document.createElement('div');
     label.className = 'qr-name';
     label.textContent = item.name;
@@ -1481,18 +1534,17 @@ function printQRSheet() {
     grid.appendChild(cell);
     new QRCode(box, {
       text: item.id,
-      width: 200,
-      height: 200,
+      width: ${cfg.qrPx},
+      height: ${cfg.qrPx},
       colorDark: '#003366',
       colorLight: '#ffffff',
       correctLevel: QRCode.CorrectLevel.M
     });
   });
   setTimeout(function() {
-    // Clean up QRCode.js extra images
     document.querySelectorAll('.qr-box img').forEach(function(img) {
-      img.style.width = '30mm';
-      img.style.height = '30mm';
+      img.style.width = '${cfg.qrMM}mm';
+      img.style.height = '${cfg.qrMM}mm';
     });
   }, 300);
 <\/script>
