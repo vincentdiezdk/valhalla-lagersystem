@@ -329,10 +329,6 @@ function renderLogin() {
           <p>Lagersystem</p>
         </div>
         <div class="login-error" id="login-error"></div>
-        <div class="tabs" id="login-tabs" style="margin-bottom:16px">
-          <button class="tab active" data-tab="signin">Log ind</button>
-          <button class="tab" data-tab="signup">Opret konto</button>
-        </div>
         <form id="login-form">
           <div class="form-group">
             <label>Email</label>
@@ -354,24 +350,6 @@ function setupLoginHandlers() {
   const form = document.getElementById('login-form');
   if (!form) return;
 
-  let mode = 'signin';
-
-  // Tab switching
-  document.querySelectorAll('#login-tabs .tab').forEach(tab => {
-    tab.onclick = () => {
-      document.querySelectorAll('#login-tabs .tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      mode = tab.dataset.tab;
-      const btn = document.getElementById('login-btn');
-      if (mode === 'signup') {
-        btn.innerHTML = `${icon('user-plus')} Opret konto`;
-      } else {
-        btn.innerHTML = `${icon('log-in')} Log ind`;
-      }
-      lucide.createIcons({ nodes: [btn] });
-    };
-  });
-
   form.onsubmit = async (e) => {
     e.preventDefault();
     const email = document.getElementById('login-email').value.trim();
@@ -379,39 +357,19 @@ function setupLoginHandlers() {
     const btn = document.getElementById('login-btn');
     const errEl = document.getElementById('login-error');
     btn.disabled = true;
-    btn.innerHTML = `<span class="spinner" style="width:20px;height:20px;border-width:2px;"></span> ${mode === 'signup' ? 'Opretter konto...' : 'Logger ind...'}`;
+    btn.innerHTML = `<span class="spinner" style="width:20px;height:20px;border-width:2px;"></span> Logger ind...`;
 
     try {
-      if (mode === 'signup') {
-        const { data, error } = await sb.auth.signUp({ email, password });
-        if (error) throw error;
-        if (data.session) {
-          currentSession = data.session;
-          await loadProfile();
-          toast('Konto oprettet!');
-          navigate('dashboard');
-        } else {
-          // Email confirmation might be enabled
-          toast('Konto oprettet! Tjek din email for bekræftelse.', 'info');
-          // Switch to login tab
-          document.querySelector('#login-tabs .tab[data-tab="signin"]')?.click();
-        }
-      } else {
-        const { data, error } = await sb.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        currentSession = data.session;
-        await loadProfile();
-        navigate('dashboard');
-      }
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      currentSession = data.session;
+      await loadProfile();
+      navigate('dashboard');
     } catch (err) {
       errEl.textContent = err.message || 'Ukendt fejl';
       errEl.classList.add('visible');
       btn.disabled = false;
-      if (mode === 'signup') {
-        btn.innerHTML = `${icon('user-plus')} Opret konto`;
-      } else {
-        btn.innerHTML = `${icon('log-in')} Log ind`;
-      }
+      btn.innerHTML = `${icon('log-in')} Log ind`;
       lucide.createIcons({ nodes: [btn] });
     }
   };
@@ -425,16 +383,37 @@ async function loadProfile() {
     .eq('id', currentSession.user.id)
     .single();
   if (error) {
-    // Profile might not be created yet (trigger delay); retry once
+    // Profile might not exist yet — try to create it
     await new Promise(r => setTimeout(r, 1000));
     const retry = await sb.from('profiles').select('*').eq('id', currentSession.user.id).single();
     if (retry.error) {
-      currentUser = {
+      // Profile still missing — create it now
+      const email = currentSession.user.email || '';
+      // Check if this is the first user — make them admin
+      const { count } = await sb.from('profiles').select('*', { count: 'exact', head: true });
+      const firstUserRole = (count === 0 || count === null) ? 'admin' : 'leader';
+      const { error: upsertErr } = await sb.from('profiles').upsert({
         id: currentSession.user.id,
-        username: currentSession.user.email,
-        display_name: currentSession.user.email.split('@')[0],
-        role: 'leader'
-      };
+        username: email,
+        display_name: email.split('@')[0],
+        role: firstUserRole
+      });
+      if (!upsertErr) {
+        const fresh = await sb.from('profiles').select('*').eq('id', currentSession.user.id).single();
+        currentUser = fresh.data || {
+          id: currentSession.user.id,
+          username: email,
+          display_name: email.split('@')[0],
+          role: 'leader'
+        };
+      } else {
+        currentUser = {
+          id: currentSession.user.id,
+          username: email,
+          display_name: email.split('@')[0],
+          role: 'leader'
+        };
+      }
       return;
     }
     currentUser = retry.data;
@@ -1855,15 +1834,11 @@ async function renderUsers(el) {
   el.innerHTML = `
     <div class="page-header">
       <h1>Brugere</h1>
+      <button class="btn btn-primary" onclick="showCreateUserModal()">
+        ${icon('user-plus')} Opret bruger
+      </button>
     </div>
     <div class="page-body">
-      <div style="background:var(--amber-50);border:1px solid var(--amber-200);border-radius:12px;padding:16px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
-        ${icon('info')}
-        <div>
-          <strong>Nye ledere opretter selv en konto via login-siden.</strong><br>
-          <span style="color:var(--stone-500)">Du kan ændre deres rolle herunder efter oprettelse.</span>
-        </div>
-      </div>
       <div id="users-list"><div class="loading-spinner"><div class="spinner"></div></div></div>
     </div>`;
   lucide.createIcons({ nodes: [el] });
@@ -1895,6 +1870,85 @@ async function renderUsers(el) {
     }).join('')}</div>`;
     lucide.createIcons({ nodes: [el] });
   } catch (err) { toast(err.message, 'error'); }
+}
+
+function showCreateUserModal() {
+  openModal(`
+    <div class="modal-header">
+      <h2>${icon('user-plus')} Opret ny bruger</h2>
+      <button class="modal-close" onclick="closeModal()">${icon('x')}</button>
+    </div>
+    <form id="create-user-form">
+      <div class="form-group">
+        <label>Navn</label>
+        <input type="text" class="form-input" id="new-user-name" placeholder="F.eks. Anders Hansen" required>
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" class="form-input" id="new-user-email" placeholder="email@eksempel.dk" required>
+      </div>
+      <div class="form-group">
+        <label>Adgangskode</label>
+        <input type="password" class="form-input" id="new-user-pass" placeholder="Mindst 6 tegn" minlength="6" required>
+      </div>
+      <div class="form-group">
+        <label>Rolle</label>
+        <select class="form-input" id="new-user-role">
+          <option value="leader">Leder</option>
+          <option value="admin">Administrator</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Annuller</button>
+        <button type="submit" class="btn btn-primary" id="create-user-btn">${icon('user-plus')} Opret</button>
+      </div>
+    </form>`);
+  document.getElementById('create-user-form').onsubmit = handleCreateUser;
+}
+
+async function handleCreateUser(e) {
+  e.preventDefault();
+  const name = document.getElementById('new-user-name').value.trim();
+  const email = document.getElementById('new-user-email').value.trim();
+  const password = document.getElementById('new-user-pass').value;
+  const role = document.getElementById('new-user-role').value;
+  const btn = document.getElementById('create-user-btn');
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner" style="width:18px;height:18px;border-width:2px;"></span> Opretter...`;
+
+  try {
+    // Create user via Supabase Auth
+    const { data, error } = await sb.auth.signUp({ email, password });
+    if (error) throw error;
+    const userId = data.user?.id;
+    if (!userId) throw new Error('Brugeren blev ikke oprettet korrekt');
+
+    // Wait for trigger to create profile, then update name and role
+    await new Promise(r => setTimeout(r, 1500));
+    const { error: upErr } = await sb.from('profiles').upsert({
+      id: userId,
+      username: email,
+      display_name: name,
+      role: role
+    });
+    if (upErr) throw upErr;
+
+    // Re-auth as current admin (signUp may have switched session)
+    // Restore admin session
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      currentSession = session;
+    }
+
+    toast(`Bruger ${name} oprettet!`);
+    closeModal();
+    navigate('users');
+  } catch (err) {
+    toast(err.message || 'Kunne ikke oprette bruger', 'error');
+    btn.disabled = false;
+    btn.innerHTML = `${icon('user-plus')} Opret`;
+    lucide.createIcons({ nodes: [btn] });
+  }
 }
 
 async function toggleUserRole(userId, currentRole) {
