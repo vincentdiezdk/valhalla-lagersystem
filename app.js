@@ -29,13 +29,3 @@ function initSupabase(url, key) {
   });
   return sb;
 }
-
-// ─── State ─────────────────────────────────────────────────────────────
-let currentSession = null;
-let currentUser = null;
-let currentRoute = 'login';
-let cachedData = { categories: null, locations: null, items: null };
-let html5QrCode = null;
-let scannerRunning = false;
-let configReady = false;
-let darkTheme = false;
