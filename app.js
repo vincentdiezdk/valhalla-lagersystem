@@ -3,15 +3,31 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 // ─── Supabase Client ───────────────────────────────────────────────────
-let supabase = null;
+let sb = null;
 let supabaseUrl = '';
 let supabaseAnonKey = '';
 
 function initSupabase(url, key) {
   supabaseUrl = url;
   supabaseAnonKey = key;
-  supabase = window.supabase.createClient(url, key);
-  return supabase;
+  // Use in-memory storage adapter to work in sandboxed iframes
+  var memStore = window.__memStorage || (function() {
+    var s = {};
+    return {
+      getItem: function(k) { return s.hasOwnProperty(k) ? s[k] : null; },
+      setItem: function(k, v) { s[k] = String(v); },
+      removeItem: function(k) { delete s[k]; }
+    };
+  })();
+  sb = window.supabase.createClient(url, key, {
+    auth: {
+      storage: memStore,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true
+    }
+  });
+  return sb;
 }
 
 // ─── State ─────────────────────────────────────────────────────────────
@@ -142,7 +158,7 @@ async function deleteStorageImage(publicUrl) {
   const filename = storageFilename(publicUrl);
   if (!filename) return;
   try {
-    await supabase.storage.from('images').remove([filename]);
+    await sb.storage.from('images').remove([filename]);
   } catch (e) {
     console.warn('Kunne ikke slette gammelt billede:', e.message);
   }
@@ -152,12 +168,12 @@ async function uploadImage(blob, prefix = 'item', format, ext) {
   const contentType = format || (WEBP_SUPPORTED ? IMG_FORMAT : 'image/jpeg');
   const fileExt = ext || (WEBP_SUPPORTED ? IMG_EXT : '.jpg');
   const filename = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${fileExt}`;
-  const { error } = await supabase.storage.from('images').upload(filename, blob, {
+  const { error } = await sb.storage.from('images').upload(filename, blob, {
     contentType,
     upsert: false
   });
   if (error) throw new Error('Billedupload fejlede: ' + error.message);
-  const { data } = supabase.storage.from('images').getPublicUrl(filename);
+  const { data } = sb.storage.from('images').getPublicUrl(filename);
   return data.publicUrl;
 }
 
@@ -280,11 +296,11 @@ function setupConfigHandlers() {
     try {
       initSupabase(url, key);
       // Test the connection by querying categories
-      const { error } = await supabase.from('categories').select('id').limit(1);
+      const { error } = await sb.from('categories').select('id').limit(1);
       if (error) throw new Error(error.message);
       configReady = true;
       // Check for existing session
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await sb.auth.getSession();
       if (session) {
         currentSession = session;
         await loadProfile();
@@ -367,7 +383,7 @@ function setupLoginHandlers() {
 
     try {
       if (mode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await sb.auth.signUp({ email, password });
         if (error) throw error;
         if (data.session) {
           currentSession = data.session;
@@ -381,7 +397,7 @@ function setupLoginHandlers() {
           document.querySelector('#login-tabs .tab[data-tab="signin"]')?.click();
         }
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await sb.auth.signInWithPassword({ email, password });
         if (error) throw error;
         currentSession = data.session;
         await loadProfile();
@@ -403,7 +419,7 @@ function setupLoginHandlers() {
 
 async function loadProfile() {
   if (!currentSession) return;
-  const { data, error } = await supabase
+  const { data, error } = await sb
     .from('profiles')
     .select('*')
     .eq('id', currentSession.user.id)
@@ -411,7 +427,7 @@ async function loadProfile() {
   if (error) {
     // Profile might not be created yet (trigger delay); retry once
     await new Promise(r => setTimeout(r, 1000));
-    const retry = await supabase.from('profiles').select('*').eq('id', currentSession.user.id).single();
+    const retry = await sb.from('profiles').select('*').eq('id', currentSession.user.id).single();
     if (retry.error) {
       currentUser = {
         id: currentSession.user.id,
@@ -534,14 +550,14 @@ async function renderDashboard(el) {
       { data: recentReportsData },
       { data: recentFoodData }
     ] = await Promise.all([
-      supabase.from('items').select('*', { count: 'exact', head: true }),
-      supabase.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-      supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'open'),
-      supabase.from('items').select('id, quantity, min_quantity').eq('type', 'food'),
-      supabase.from('loans').select('id').eq('status', 'active').not('expected_return', 'is', null).lt('expected_return', new Date().toISOString().split('T')[0]),
-      supabase.from('loans').select('*, items!loans_item_id_fkey(name, image_url), profiles!loans_user_id_fkey_profiles(display_name)').order('loan_date', { ascending: false }).limit(5),
-      supabase.from('reports').select('*, items!reports_item_id_fkey(name, image_url), profiles!reports_user_id_fkey_profiles(display_name)').order('created_at', { ascending: false }).limit(5),
-      supabase.from('food_log').select('*, items!food_log_item_id_fkey(name, image_url), profiles!food_log_user_id_fkey_profiles(display_name)').order('created_at', { ascending: false }).limit(5)
+      sb.from('items').select('*', { count: 'exact', head: true }),
+      sb.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+      sb.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'open'),
+      sb.from('items').select('id, quantity, min_quantity').eq('type', 'food'),
+      sb.from('loans').select('id').eq('status', 'active').not('expected_return', 'is', null).lt('expected_return', new Date().toISOString().split('T')[0]),
+      sb.from('loans').select('*, items!loans_item_id_fkey(name, image_url), profiles!loans_user_id_fkey_profiles(display_name)').order('loan_date', { ascending: false }).limit(5),
+      sb.from('reports').select('*, items!reports_item_id_fkey(name, image_url), profiles!reports_user_id_fkey_profiles(display_name)').order('created_at', { ascending: false }).limit(5),
+      sb.from('food_log').select('*, items!food_log_item_id_fkey(name, image_url), profiles!food_log_user_id_fkey_profiles(display_name)').order('created_at', { ascending: false }).limit(5)
     ]);
 
     // lowStockItems: client-side filter since Supabase can't compare two columns directly
@@ -706,7 +722,7 @@ async function renderItems(el) {
   const loadItemsList = async () => {
     const q = document.getElementById('items-search')?.value || '';
 
-    let query = supabase
+    let query = sb
       .from('items')
       .select('*, locations(room_name, shelf_name), item_categories(categories(id, name, icon))')
       .order('name');
@@ -785,7 +801,7 @@ function renderItemsGrid(items) {
 async function showItemDetail(id) {
   try {
     // Get item with location and categories
-    const { data: item, error } = await supabase
+    const { data: item, error } = await sb
       .from('items')
       .select('*, locations(room_name, shelf_name), item_categories(categories(id, name, icon))')
       .eq('id', id)
@@ -798,7 +814,7 @@ async function showItemDetail(id) {
     item.categories = (item.item_categories || []).map(ic => ic.categories).filter(Boolean);
 
     // Get active loans for this item
-    const { data: activeLoans } = await supabase
+    const { data: activeLoans } = await sb
       .from('loans')
       .select('*, profiles!loans_user_id_fkey_profiles(display_name)')
       .eq('item_id', id)
@@ -810,7 +826,7 @@ async function showItemDetail(id) {
     }));
 
     // Get reports for this item
-    const { data: reportsData } = await supabase
+    const { data: reportsData } = await sb
       .from('reports')
       .select('*, profiles!reports_user_id_fkey_profiles(display_name)')
       .eq('item_id', id)
@@ -882,7 +898,7 @@ async function showItemForm(editId) {
   let item = null;
   if (editId) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await sb
         .from('items')
         .select('*, item_categories(categories(id, name, icon))')
         .eq('id', editId)
@@ -971,11 +987,7 @@ async function showItemForm(editId) {
     try {
       imageResult = await optimizeImage(file);
       const previewUrl = URL.createObjectURL(imageResult.blob);
-      const savedPct = imageResult.originalSize > 0
-        ? Math.round((1 - imageResult.optimizedSize / imageResult.originalSize) * 100)
-        : 0;
-      const sizeKB = Math.round(imageResult.optimizedSize / 1024);
-      area.innerHTML = `<img src="${previewUrl}" class="image-preview"><p style="text-align:center;font-size:0.78rem;color:var(--text-3);margin-top:4px">${WEBP_SUPPORTED ? 'WebP' : 'JPEG'} · ${sizeKB} KB · ${savedPct}% mindre</p>`;
+      area.innerHTML = `<img src="${previewUrl}" class="image-preview">`;
     } catch (err) {
       area.innerHTML = `${icon('camera')}<p>Fejl: ${err.message}</p>`;
       imageResult = null;
@@ -1018,24 +1030,24 @@ async function showItemForm(editId) {
 
     try {
       if (isEdit) {
-        const { error } = await supabase.from('items').update(record).eq('id', editId);
+        const { error } = await sb.from('items').update(record).eq('id', editId);
         if (error) throw error;
 
         // Update categories: delete old, insert new
-        await supabase.from('item_categories').delete().eq('item_id', editId);
+        await sb.from('item_categories').delete().eq('item_id', editId);
         if (catIds.length > 0) {
           const catRows = catIds.map(cid => ({ item_id: editId, category_id: cid }));
-          await supabase.from('item_categories').insert(catRows);
+          await sb.from('item_categories').insert(catRows);
         }
         toast('Genstand opdateret');
       } else {
         record.created_by = currentSession.user.id;
-        const { data: newItem, error } = await supabase.from('items').insert(record).select('id').single();
+        const { data: newItem, error } = await sb.from('items').insert(record).select('id').single();
         if (error) throw error;
 
         if (catIds.length > 0) {
           const catRows = catIds.map(cid => ({ item_id: newItem.id, category_id: cid }));
-          await supabase.from('item_categories').insert(catRows);
+          await sb.from('item_categories').insert(catRows);
         }
         toast('Genstand oprettet');
       }
@@ -1050,9 +1062,9 @@ async function deleteItem(id) {
   if (!confirm('Er du sikker på at du vil slette denne genstand?')) return;
   try {
     // Hent billedets URL først så vi kan slette fra Storage
-    const { data: item } = await supabase.from('items').select('image_url').eq('id', id).single();
+    const { data: item } = await sb.from('items').select('image_url').eq('id', id).single();
     // item_categories will cascade
-    const { error } = await supabase.from('items').delete().eq('id', id);
+    const { error } = await sb.from('items').delete().eq('id', id);
     if (error) throw error;
     // Slet billedet fra Storage (fire-and-forget)
     if (item?.image_url) deleteStorageImage(item.image_url);
@@ -1084,7 +1096,7 @@ async function renderLoans(el) {
 
   let currentStatus = 'active';
   const loadLoans = async () => {
-    let query = supabase
+    let query = sb
       .from('loans')
       .select('*, items!loans_item_id_fkey(name, image_url), profiles!loans_user_id_fkey_profiles(display_name)')
       .order('loan_date', { ascending: false });
@@ -1150,7 +1162,7 @@ function renderLoansList(loans, status) {
 
 async function showLoanForm(preselectedItemId) {
   // Load items for selection
-  const { data: items, error } = await supabase
+  const { data: items, error } = await sb
     .from('items')
     .select('id, name, quantity')
     .order('name');
@@ -1204,7 +1216,7 @@ async function showLoanForm(preselectedItemId) {
     if (!itemId) { toast('Vælg en genstand', 'error'); return; }
     const quantity = parseInt(document.getElementById('loan-qty').value) || 1;
     try {
-      const { error } = await supabase.from('loans').insert({
+      const { error } = await sb.from('loans').insert({
         item_id: itemId,
         user_id: currentSession.user.id,
         quantity,
@@ -1214,7 +1226,7 @@ async function showLoanForm(preselectedItemId) {
       });
       if (error) throw error;
       // Decrement item quantity
-      await supabase.rpc('decrement_item_quantity', { p_item_id: itemId, p_amount: quantity });
+      await sb.rpc('decrement_item_quantity', { p_item_id: itemId, p_amount: quantity });
       toast('Udlån oprettet');
       closeModal();
       navigate('loans');
@@ -1224,13 +1236,13 @@ async function showLoanForm(preselectedItemId) {
 
 async function returnLoan(loanId, itemId, quantity) {
   try {
-    const { error } = await supabase
+    const { error } = await sb
       .from('loans')
       .update({ status: 'returned', actual_return: new Date().toISOString() })
       .eq('id', loanId);
     if (error) throw error;
     // Increment item quantity back
-    await supabase.rpc('increment_item_quantity', { p_item_id: itemId, p_amount: quantity });
+    await sb.rpc('increment_item_quantity', { p_item_id: itemId, p_amount: quantity });
     toast('Udlån markeret som returneret');
     navigate('loans');
   } catch (err) { toast(err.message, 'error'); }
@@ -1257,7 +1269,7 @@ async function renderReports(el) {
 
   let currentStatus = 'open';
   const loadReportsList = async () => {
-    let query = supabase
+    let query = sb
       .from('reports')
       .select('*, items!reports_item_id_fkey(name, image_url), profiles!reports_user_id_fkey_profiles(display_name)')
       .order('created_at', { ascending: false });
@@ -1312,7 +1324,7 @@ function renderReportsList(reports) {
 }
 
 async function showReportDetail(id) {
-  const { data: r, error } = await supabase
+  const { data: r, error } = await sb
     .from('reports')
     .select('*, items!reports_item_id_fkey(name, image_url), profiles!reports_user_id_fkey_profiles(display_name)')
     .eq('id', id)
@@ -1372,7 +1384,7 @@ async function respondReport(id, status, itemId) {
   try {
     const response = document.getElementById('report-response')?.value || '';
     const resolvedAt = (status === 'resolved' || status === 'retired') ? new Date().toISOString() : null;
-    const { error } = await supabase
+    const { error } = await sb
       .from('reports')
       .update({ status, admin_response: response, resolved_at: resolvedAt })
       .eq('id', id);
@@ -1380,7 +1392,7 @@ async function respondReport(id, status, itemId) {
 
     // If retiring, set item quantity to 0
     if (status === 'retired' && itemId) {
-      await supabase.rpc('set_item_quantity_zero', { p_item_id: itemId });
+      await sb.rpc('set_item_quantity_zero', { p_item_id: itemId });
     }
     toast('Rapport opdateret');
     closeModal();
@@ -1389,7 +1401,7 @@ async function respondReport(id, status, itemId) {
 }
 
 async function showReportForm(preselectedItemId, preselectedType) {
-  const { data: items } = await supabase.from('items').select('id, name').order('name');
+  const { data: items } = await sb.from('items').select('id, name').order('name');
 
   openModal(`
     <div class="modal-handle"></div>
@@ -1435,8 +1447,7 @@ async function showReportForm(preselectedItemId, preselectedType) {
     try {
       reportImageResult = await optimizeImage(file);
       const previewUrl = URL.createObjectURL(reportImageResult.blob);
-      const sizeKB = Math.round(reportImageResult.optimizedSize / 1024);
-      area.innerHTML = `<img src="${previewUrl}" class="image-preview"><p style="text-align:center;font-size:0.78rem;color:var(--text-3);margin-top:4px">${WEBP_SUPPORTED ? 'WebP' : 'JPEG'} · ${sizeKB} KB</p>`;
+      area.innerHTML = `<img src="${previewUrl}" class="image-preview">`;
     } catch (err) {
       area.innerHTML = `${icon('camera')}<p>Fejl: ${err.message}</p>`;
       reportImageResult = null;
@@ -1451,7 +1462,7 @@ async function showReportForm(preselectedItemId, preselectedType) {
       if (reportImageResult) {
         imageUrl = await uploadImage(reportImageResult.blob, 'report', reportImageResult.format, reportImageResult.ext);
       }
-      const { error } = await supabase.from('reports').insert({
+      const { error } = await sb.from('reports').insert({
         item_id: itemId,
         user_id: currentSession.user.id,
         type: document.getElementById('report-type').value,
@@ -1483,7 +1494,7 @@ async function renderKitchen(el) {
   lucide.createIcons({ nodes: [el] });
 
   // Load food items
-  const { data: items } = await supabase
+  const { data: items } = await sb
     .from('items')
     .select('*, locations(room_name, shelf_name)')
     .eq('type', 'food')
@@ -1555,7 +1566,7 @@ async function handleBarcodeScan(code) {
   const resultDiv = document.getElementById('scan-result');
   if (!resultDiv) return;
   try {
-    const { data: item, error } = await supabase
+    const { data: item, error } = await sb
       .from('items')
       .select('*, locations(room_name, shelf_name)')
       .eq('barcode', code)
@@ -1603,7 +1614,7 @@ async function showItemFormWithBarcode(barcode) {
 
 async function logFood(itemId, action) {
   try {
-    const { error } = await supabase.from('food_log').insert({
+    const { error } = await sb.from('food_log').insert({
       item_id: itemId,
       user_id: currentSession.user.id,
       action,
@@ -1613,11 +1624,11 @@ async function logFood(itemId, action) {
 
     // Update item quantity via RPC
     if (action === 'added') {
-      await supabase.rpc('increment_item_quantity', { p_item_id: itemId, p_amount: 1 });
+      await sb.rpc('increment_item_quantity', { p_item_id: itemId, p_amount: 1 });
     } else if (action === 'used') {
-      await supabase.rpc('decrement_item_quantity', { p_item_id: itemId, p_amount: 1 });
+      await sb.rpc('decrement_item_quantity', { p_item_id: itemId, p_amount: 1 });
     } else if (action === 'empty') {
-      await supabase.rpc('set_item_quantity_zero', { p_item_id: itemId });
+      await sb.rpc('set_item_quantity_zero', { p_item_id: itemId });
     }
 
     const labels = { added: 'Tilføjet', used: 'Brugt', empty: 'Markeret tom' };
@@ -1643,7 +1654,7 @@ async function renderCategories(el) {
   const cats = await loadCategories(true);
 
   // Get item counts per category
-  const { data: catCounts } = await supabase
+  const { data: catCounts } = await sb
     .from('item_categories')
     .select('category_id');
 
@@ -1706,11 +1717,11 @@ async function showCategoryForm(editId) {
     if (!body.name) { toast('Navn er påkrævet', 'error'); return; }
     try {
       if (cat) {
-        const { error } = await supabase.from('categories').update(body).eq('id', editId);
+        const { error } = await sb.from('categories').update(body).eq('id', editId);
         if (error) throw error;
         toast('Kategori opdateret');
       } else {
-        const { error } = await supabase.from('categories').insert(body);
+        const { error } = await sb.from('categories').insert(body);
         if (error) throw error;
         toast('Kategori oprettet');
       }
@@ -1725,7 +1736,7 @@ async function deleteCategory(id) {
   if (!confirm('Slet denne kategori?')) return;
   try {
     // item_categories will cascade via ON DELETE CASCADE on category_id
-    const { error } = await supabase.from('categories').delete().eq('id', id);
+    const { error } = await sb.from('categories').delete().eq('id', id);
     if (error) throw error;
     toast('Kategori slettet');
     cachedData.categories = null;
@@ -1750,7 +1761,7 @@ async function renderLocations(el) {
   const locs = await loadLocations(true);
 
   // Get item counts per location
-  const { data: locCounts } = await supabase
+  const { data: locCounts } = await sb
     .from('items')
     .select('location_id');
 
@@ -1811,11 +1822,11 @@ async function showLocationForm(editId) {
     if (!body.room_name) { toast('Rum er påkrævet', 'error'); return; }
     try {
       if (loc) {
-        const { error } = await supabase.from('locations').update(body).eq('id', editId);
+        const { error } = await sb.from('locations').update(body).eq('id', editId);
         if (error) throw error;
         toast('Lokation opdateret');
       } else {
-        const { error } = await supabase.from('locations').insert(body);
+        const { error } = await sb.from('locations').insert(body);
         if (error) throw error;
         toast('Lokation oprettet');
       }
@@ -1830,8 +1841,8 @@ async function deleteLocation(id) {
   if (!confirm('Slet denne lokation?')) return;
   try {
     // Unlink items from this location first
-    await supabase.from('items').update({ location_id: null }).eq('location_id', id);
-    const { error } = await supabase.from('locations').delete().eq('id', id);
+    await sb.from('items').update({ location_id: null }).eq('location_id', id);
+    const { error } = await sb.from('locations').delete().eq('id', id);
     if (error) throw error;
     toast('Lokation slettet');
     cachedData.locations = null;
@@ -1858,7 +1869,7 @@ async function renderUsers(el) {
   lucide.createIcons({ nodes: [el] });
 
   try {
-    const { data: users, error } = await supabase
+    const { data: users, error } = await sb
       .from('profiles')
       .select('*')
       .order('display_name');
@@ -1891,7 +1902,7 @@ async function toggleUserRole(userId, currentRole) {
   const label = newRole === 'admin' ? 'Administrator' : 'Leder';
   if (!confirm(`Ændr brugerens rolle til ${label}?`)) return;
   try {
-    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
+    const { error } = await sb.from('profiles').update({ role: newRole }).eq('id', userId);
     if (error) throw error;
     toast(`Rolle ændret til ${label}`);
     navigate('users');
@@ -1901,14 +1912,14 @@ async function toggleUserRole(userId, currentRole) {
 // ─── Data Loaders ──────────────────────────────────────────────────────
 async function loadCategories(force) {
   if (!force && cachedData.categories) return cachedData.categories;
-  const { data, error } = await supabase.from('categories').select('*').order('name');
+  const { data, error } = await sb.from('categories').select('*').order('name');
   if (error) { toast(error.message, 'error'); return []; }
   cachedData.categories = data || [];
   return cachedData.categories;
 }
 async function loadLocations(force) {
   if (!force && cachedData.locations) return cachedData.locations;
-  const { data, error } = await supabase.from('locations').select('*').order('room_name').order('shelf_name');
+  const { data, error } = await sb.from('locations').select('*').order('room_name').order('shelf_name');
   if (error) { toast(error.message, 'error'); return []; }
   cachedData.locations = data || [];
   return cachedData.locations;
@@ -1935,7 +1946,7 @@ function statusLabel(status) {
 }
 
 async function handleLogout() {
-  try { await supabase.auth.signOut(); } catch(e) {}
+  try { await sb.auth.signOut(); } catch(e) {}
   currentSession = null;
   currentUser = null;
   cachedData = { categories: null, locations: null, items: null };
@@ -1944,8 +1955,8 @@ async function handleLogout() {
 
 // ─── Auth State Listener ───────────────────────────────────────────────
 function setupAuthListener() {
-  if (!supabase) return;
-  supabase.auth.onAuthStateChange(async (event, session) => {
+  if (!sb) return;
+  sb.auth.onAuthStateChange(async (event, session) => {
     if (event === 'SIGNED_OUT') {
       currentSession = null;
       currentUser = null;
@@ -1962,31 +1973,37 @@ function setupAuthListener() {
 
 // ─── Init ──────────────────────────────────────────────────────────────
 (async function init() {
-  // Check for pre-configured Supabase credentials
-  if (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url && window.SUPABASE_CONFIG.anonKey) {
-    try {
-      initSupabase(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
-      configReady = true;
-      setupAuthListener();
+  try {
+    // Check for pre-configured Supabase credentials
+    if (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url && window.SUPABASE_CONFIG.anonKey) {
+      try {
+        initSupabase(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+        configReady = true;
+        setupAuthListener();
 
-      // Check for existing session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        currentSession = session;
-        await loadProfile();
-        currentRoute = getRoute();
-        if (currentRoute === 'login') currentRoute = 'dashboard';
-      } else {
-        currentRoute = 'login';
+        // Check for existing session
+        const { data: { session } } = await sb.auth.getSession();
+        if (session) {
+          currentSession = session;
+          await loadProfile();
+          currentRoute = getRoute();
+          if (currentRoute === 'login') currentRoute = 'dashboard';
+        } else {
+          currentRoute = 'login';
+        }
+      } catch (e) {
+        configReady = false;
       }
-    } catch (e) {
-      configReady = false;
     }
+
+    currentRoute = getRoute();
+    render();
+
+    // If config was set, setup auth listener (in case it wasn't set above)
+    if (configReady) setupAuthListener();
+  } catch (fatal) {
+    // Fallback: ensure something always renders even on unexpected errors
+    var app = document.getElementById('app');
+    if (app) app.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif;"><h2>Noget gik galt</h2><p>' + (fatal.message || 'Ukendt fejl') + '</p><button onclick="location.reload()" style="padding:10px 20px;margin-top:16px;cursor:pointer;">Genindlæs</button></div>';
   }
-
-  currentRoute = getRoute();
-  render();
-
-  // If config was set, setup auth listener (in case it wasn't set above)
-  if (configReady) setupAuthListener();
 })();
