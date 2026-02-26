@@ -898,10 +898,18 @@ async function showItemForm(editId) {
       <button class="modal-close" onclick="closeModal()">${icon('x')}</button>
     </div>
     <div class="modal-body">
-      <div class="image-upload-area" id="image-upload-area" onclick="document.getElementById('item-image-input').click()">
-        ${item?.image_url ? `<img src="${item.image_url.startsWith('http') ? item.image_url : './' + item.image_url}" class="image-preview" id="image-preview">` : `${icon('camera')}<p>Tryk for at tilføje billede</p>`}
+      <div class="image-upload-area" id="image-upload-area">
+        ${item?.image_url ? `<img src="${item.image_url.startsWith('http') ? item.image_url : './' + item.image_url}" class="image-preview" id="image-preview">` : `
+          ${icon('camera')}
+          <p>Tilføj billede</p>
+          <div class="image-btn-group">
+            <button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation();document.getElementById('item-image-capture').click()">${icon('camera')} Tag billede</button>
+            <button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation();document.getElementById('item-image-upload').click()">${icon('upload')} Vælg fil</button>
+          </div>
+        `}
       </div>
-      <input type="file" id="item-image-input" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="item-image-capture" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="item-image-upload" accept="image/*" style="display:none">
       <div id="image-preview-wrap"></div>
 
       <div class="form-group">
@@ -958,7 +966,7 @@ async function showItemForm(editId) {
 
   // Image handler
   let imageResult = null;
-  document.getElementById('item-image-input').onchange = async (e) => {
+  const imageHandler = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const area = document.getElementById('image-upload-area');
@@ -966,12 +974,24 @@ async function showItemForm(editId) {
     try {
       imageResult = await optimizeImage(file);
       const previewUrl = URL.createObjectURL(imageResult.blob);
-      area.innerHTML = `<img src="${previewUrl}" class="image-preview">`;
+      area.innerHTML = `<img src="${previewUrl}" class="image-preview">
+        <div class="image-btn-group" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%)">
+          <button type="button" class="btn btn-sm btn-outline" style="background:rgba(0,0,0,0.6);color:#fff;border-color:rgba(255,255,255,0.3)" onclick="event.stopPropagation();document.getElementById('item-image-capture').click()">${icon('camera')} Skift</button>
+          <button type="button" class="btn btn-sm btn-outline" style="background:rgba(0,0,0,0.6);color:#fff;border-color:rgba(255,255,255,0.3)" onclick="event.stopPropagation();document.getElementById('item-image-upload').click()">${icon('upload')} Vælg</button>
+        </div>`;
+      lucide.createIcons({ nodes: [area] });
     } catch (err) {
-      area.innerHTML = `${icon('camera')}<p>Fejl: ${err.message}</p>`;
+      area.innerHTML = `${icon('camera')}<p>Fejl: ${err.message}</p>
+        <div class="image-btn-group">
+          <button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation();document.getElementById('item-image-capture').click()">${icon('camera')} Tag billede</button>
+          <button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation();document.getElementById('item-image-upload').click()">${icon('upload')} Vælg fil</button>
+        </div>`;
+      lucide.createIcons({ nodes: [area] });
       imageResult = null;
     }
   };
+  document.getElementById('item-image-capture').onchange = imageHandler;
+  document.getElementById('item-image-upload').onchange = imageHandler;
 
   // Save handler
   document.getElementById('item-save-btn').onclick = async () => {
@@ -1407,10 +1427,15 @@ async function showReportForm(preselectedItemId, preselectedType) {
         <label>Beskrivelse</label>
         <textarea class="form-input" id="report-desc" placeholder="Beskriv problemet..."></textarea>
       </div>
-      <div class="image-upload-area" id="report-image-area" onclick="document.getElementById('report-image-input').click()">
+      <div class="image-upload-area" id="report-image-area">
         ${icon('camera')}<p>Tilføj billede (valgfrit)</p>
+        <div class="image-btn-group">
+          <button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation();document.getElementById('report-image-capture').click()">${icon('camera')} Tag billede</button>
+          <button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation();document.getElementById('report-image-upload').click()">${icon('upload')} Vælg fil</button>
+        </div>
       </div>
-      <input type="file" id="report-image-input" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="report-image-capture" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="report-image-upload" accept="image/*" style="display:none">
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Annullér</button>
@@ -1418,7 +1443,7 @@ async function showReportForm(preselectedItemId, preselectedType) {
     </div>`);
 
   let reportImageResult = null;
-  document.getElementById('report-image-input').onchange = async (e) => {
+  const reportImageHandler = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const area = document.getElementById('report-image-area');
@@ -1426,12 +1451,24 @@ async function showReportForm(preselectedItemId, preselectedType) {
     try {
       reportImageResult = await optimizeImage(file);
       const previewUrl = URL.createObjectURL(reportImageResult.blob);
-      area.innerHTML = `<img src="${previewUrl}" class="image-preview">`;
+      area.innerHTML = `<img src="${previewUrl}" class="image-preview">
+        <div class="image-btn-group" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%)">
+          <button type="button" class="btn btn-sm btn-outline" style="background:rgba(0,0,0,0.6);color:#fff;border-color:rgba(255,255,255,0.3)" onclick="event.stopPropagation();document.getElementById('report-image-capture').click()">${icon('camera')} Skift</button>
+          <button type="button" class="btn btn-sm btn-outline" style="background:rgba(0,0,0,0.6);color:#fff;border-color:rgba(255,255,255,0.3)" onclick="event.stopPropagation();document.getElementById('report-image-upload').click()">${icon('upload')} Vælg</button>
+        </div>`;
+      lucide.createIcons({ nodes: [area] });
     } catch (err) {
-      area.innerHTML = `${icon('camera')}<p>Fejl: ${err.message}</p>`;
+      area.innerHTML = `${icon('camera')}<p>Fejl: ${err.message}</p>
+        <div class="image-btn-group">
+          <button type="button" class="btn btn-sm btn-primary" onclick="event.stopPropagation();document.getElementById('report-image-capture').click()">${icon('camera')} Tag billede</button>
+          <button type="button" class="btn btn-sm btn-outline" onclick="event.stopPropagation();document.getElementById('report-image-upload').click()">${icon('upload')} Vælg fil</button>
+        </div>`;
+      lucide.createIcons({ nodes: [area] });
       reportImageResult = null;
     }
   };
+  document.getElementById('report-image-capture').onchange = reportImageHandler;
+  document.getElementById('report-image-upload').onchange = reportImageHandler;
 
   document.getElementById('report-save-btn').onclick = async () => {
     const itemId = document.getElementById('report-item').value;
@@ -1525,7 +1562,11 @@ async function startScanner() {
     if (permErr.name === 'NotAllowedError') {
       msg = 'Du skal give tilladelse til kameraet.<br><br>'
         + '<strong>iPhone/Safari:</strong> Tryk på "Aa" i adresselinjen → Webstedsindstillinger → Kamera → Tillad<br><br>'
-        + '<strong>Android/Chrome:</strong> Tryk på låse-ikonet i adresselinjen → Tilladelser → Kamera → Tillad';
+        + '<strong>Android/Chrome:</strong><br>'
+        + '1. Tryk på de tre prikker (⋮) øverst til højre<br>'
+        + '2. Vælg "Indstillinger" → "Webstedsindstillinger" → "Kamera"<br>'
+        + '3. Sørg for at kamera er tilladt<br><br>'
+        + 'Eller prøv: Tryk på ikonet til venstre i adresselinjen → "Tilladelser" → Kamera → Tillad';
     } else if (permErr.name === 'NotFoundError') {
       msg = 'Ingen kamera fundet på denne enhed.';
     } else if (permErr.name === 'NotReadableError') {
