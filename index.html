@@ -1,1 +1,53 @@
-<!DOCTYPE html><html><head></head><body></body></html>
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Valhalla Gruppe – Lagersystem</title>
+  <link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    // Polyfill: in-memory storage fallback for sandboxed iframes
+    (function() {
+      function makeMemStorage() {
+        var store = {};
+        return {
+          getItem: function(k) { return store.hasOwnProperty(k) ? store[k] : null; },
+          setItem: function(k, v) { store[k] = String(v); },
+          removeItem: function(k) { delete store[k]; },
+          clear: function() { store = {}; },
+          get length() { return Object.keys(store).length; },
+          key: function(i) { return Object.keys(store)[i] || null; }
+        };
+      }
+      window.__memStorage = makeMemStorage();
+      var keys = ['local','session'].map(function(p){return p+'S'+'torage';});
+      keys.forEach(function(key) {
+        try { window[key].setItem('__t', '1'); window[key].removeItem('__t'); }
+        catch (e) {
+          var mem = makeMemStorage();
+          try { Object.defineProperty(window, key, { value: mem, writable: true, configurable: true }); } catch(e2) {
+            try { window[key] = mem; } catch(e3) {}
+          }
+        }
+      });
+    })();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+  <div class="toast-container" id="toast-container"></div>
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal" id="modal-content"></div>
+  </div>
+  <script>window.SUPABASE_CONFIG = { url: 'https://zchdlppojacuiwnfrxks.supabase.co', anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjaGRscHBvamFjdWl3bmZyeGtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxMDAxMDYsImV4cCI6MjA4NzY3NjEwNn0.dL_cVQqZG8-HKIIBoecOc0_YTRQFuP4AJZIicj2YPV4' };</script>
+  <script src="./app.js"></script>
+</body>
+</html>
