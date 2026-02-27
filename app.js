@@ -497,7 +497,6 @@ function renderAppShell() {
     <div class="nav-link" data-route="categories">${icon('tags')} Kategorier</div>
     <div class="nav-link" data-route="locations">${icon('map-pin')} Lokationer</div>
     <div class="nav-link" data-route="users">${icon('users')} Brugere</div>
-    <div class="nav-link" data-route="sets">${icon('boxes')} Sæt</div>
     <div class="nav-link" data-route="trips">${icon('map')} Ture</div>
   ` : '';
 
@@ -977,7 +976,7 @@ function renderItemsView(items, sets, mode) {
 
   const allEmpty = items.length === 0 && (!sets || sets.length === 0);
   if (allEmpty) {
-    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">${icon('search')}<h3>Ingen resultater</h3><p>Pr\u00f8v at \u00e6ndre dine filtre</p></div>`;
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">${icon('search')}<h3>Ingen resultater</h3><p>Prøv at ændre dine filtre</p></div>`;
     lucide.createIcons({ nodes: [grid] });
     return;
   }
@@ -989,14 +988,14 @@ function renderItemsView(items, sets, mode) {
     let html = '';
     html += items.map(item => {
       const isLow = item.type === 'food' && item.quantity <= item.min_quantity;
-      const loc = item.room_name ? `${item.room_name}${item.shelf_name ? ' \u00b7 ' + item.shelf_name : ''}` : '';
+      const loc = item.room_name ? `${item.room_name}${item.shelf_name ? ' · ' + item.shelf_name : ''}` : '';
       const cats = (item.categories || []).slice(0, 2).map(c => esc(c.name)).join(', ');
       return `
         <div class="list-item" onclick="showItemDetail('${item.id}')">
           <div class="list-item-image">${itemImage(item.image_url)}</div>
           <div class="list-item-info">
             <div class="list-item-name">${esc(item.name)}</div>
-            <div class="list-item-meta">${loc ? `${icon('map-pin')} ${esc(loc)}` : ''}${cats ? ` \u00b7 ${cats}` : ''}</div>
+            <div class="list-item-meta">${loc ? `${icon('map-pin')} ${esc(loc)}` : ''}${cats ? ` · ${cats}` : ''}</div>
           </div>
           <div class="list-item-right">
             <span class="list-item-qty ${isLow ? 'low' : ''}">${item.quantity} stk</span>
@@ -1013,7 +1012,7 @@ function renderItemsView(items, sets, mode) {
           <div class="list-item-image">${s.image_url ? `<img src="${s.image_url.startsWith('http') ? s.image_url : './' + s.image_url}" alt="" onerror="handleImgError(this)">` : `<div class="placeholder-icon">${icon('boxes')}</div>`}</div>
           <div class="list-item-info">
             <div class="list-item-name">${esc(s.name)}</div>
-            <div class="list-item-meta">${icon('boxes')} S\u00e6t \u00b7 ${components.length} dele</div>
+            <div class="list-item-meta">${icon('boxes')} Sæt · ${components.length} dele</div>
           </div>
           <div class="list-item-right">
             ${hasIssues ? `<span class="expiry-badge red" style="font-size:0.72rem">${icon('alert-triangle')}</span>` : `<span class="expiry-badge green" style="font-size:0.72rem">${icon('check-circle')}</span>`}
@@ -1027,7 +1026,7 @@ function renderItemsView(items, sets, mode) {
     let html = '';
     html += items.map(item => {
       const isLow = item.type === 'food' && item.quantity <= item.min_quantity;
-      const loc = item.room_name ? `${item.room_name}${item.shelf_name ? ' \u00b7 ' + item.shelf_name : ''}` : '';
+      const loc = item.room_name ? `${item.room_name}${item.shelf_name ? ' · ' + item.shelf_name : ''}` : '';
       const expiry = item.type === 'food' && item.expiry_date ? expiryBadge(item.expiry_date) : '';
       return `
         <div class="item-card" onclick="showItemDetail('${item.id}')">
@@ -1057,7 +1056,7 @@ function renderItemsView(items, sets, mode) {
           </div>
           <div class="item-card-body">
             <div class="item-card-name">${esc(s.name)}</div>
-            <div class="item-card-meta">${icon('boxes')} S\u00e6t \u00b7 ${components.length} dele</div>
+            <div class="item-card-meta">${icon('boxes')} Sæt · ${components.length} dele</div>
             ${hasIssues ? `<span class="expiry-badge red" style="margin-top:4px">${icon('alert-triangle')} Mangler dele</span>` : ''}
           </div>
         </div>`;
@@ -1348,27 +1347,27 @@ async function showQRPrintSheet() {
       <button class="modal-close" onclick="closeModal()">${icon('x')}</button>
     </div>
     <div class="modal-body">
-      <p style="color:var(--text-3);font-size:0.85rem;margin-bottom:12px">V\u00e6lg materialer, st\u00f8rrelse og indstillinger til QR-arket.</p>
+      <p style="color:var(--text-3);font-size:0.85rem;margin-bottom:12px">Vælg materialer, størrelse og indstillinger til QR-arket.</p>
 
       <div class="qr-sheet-options">
         <div class="form-group" style="margin-bottom:10px">
-          <label style="font-weight:600;font-size:0.85rem">St\u00f8rrelse</label>
+          <label style="font-weight:600;font-size:0.85rem">Størrelse</label>
           <div class="filter-chips" id="qr-size-chips">
             <button class="filter-chip" data-size="small">${icon('minimize-2')} Lille</button>
             <button class="filter-chip active" data-size="medium">${icon('square')} Medium</button>
             <button class="filter-chip" data-size="large">${icon('maximize-2')} Stor</button>
           </div>
-          <div style="font-size:0.75rem;color:var(--text-3);margin-top:4px" id="qr-size-hint">4 pr. r\u00e6kke \u2013 god til de fleste ting</div>
+          <div style="font-size:0.75rem;color:var(--text-3);margin-top:4px" id="qr-size-hint">4 pr. række – god til de fleste ting</div>
         </div>
         <label class="qr-sheet-row" style="border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:10px">
           <input type="checkbox" id="qr-show-valhalla" checked style="width:18px;height:18px;accent-color:var(--navy)">
-          <span class="qr-sheet-label">${icon('compass')} Vis "Valhalla Gruppe" p\u00e5 label</span>
+          <span class="qr-sheet-label">${icon('compass')} Vis "Valhalla Gruppe" på label</span>
         </label>
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:10px">
-        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.qr-sheet-cb').forEach(c=>c.checked=true)">${icon('check-square')} V\u00e6lg alle</button>
-        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.qr-sheet-cb').forEach(c=>c.checked=false)">${icon('square')} Frav\u00e6lg alle</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.qr-sheet-cb').forEach(c=>c.checked=true)">${icon('check-square')} Vælg alle</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.qr-sheet-cb').forEach(c=>c.checked=false)">${icon('square')} Fravælg alle</button>
       </div>
       <div class="qr-sheet-list">
         ${allEntries.map(e => `
@@ -1380,11 +1379,11 @@ async function showQRPrintSheet() {
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal()">Annull\u00e9r</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Annullér</button>
       <button class="btn btn-primary" onclick="printQRSheet()">${icon('printer')} Udskriv QR-ark</button>
     </div>`);
 
-  const sizeHints = { small: '6 pr. r\u00e6kke \u2013 perfekt til sm\u00e5 ting som v\u00e6rkt\u00f8j', medium: '4 pr. r\u00e6kke \u2013 god til de fleste ting', large: '2 pr. r\u00e6kke \u2013 store labels til telte o.l.' };
+  const sizeHints = { small: '6 pr. række – perfekt til små ting som værktøj', medium: '4 pr. række – god til de fleste ting', large: '2 pr. række – store labels til telte o.l.' };
   document.querySelectorAll('#qr-size-chips .filter-chip').forEach(btn => {
     btn.onclick = () => {
       document.querySelectorAll('#qr-size-chips .filter-chip').forEach(b => b.classList.remove('active'));
@@ -1400,7 +1399,7 @@ function printQRSheet() {
     id: cb.value,
     name: cb.dataset.name
   }));
-  if (checked.length === 0) { toast('V\u00e6lg mindst \u00e9n genstand', 'error'); return; }
+  if (checked.length === 0) { toast('Vælg mindst én genstand', 'error'); return; }
 
   const sizeBtn = document.querySelector('#qr-size-chips .filter-chip.active');
   const size = sizeBtn ? sizeBtn.dataset.size : 'medium';
@@ -1504,11 +1503,11 @@ function printQRSheet() {
 </head><body>
 <div class="no-print" style="text-align:center;padding:16px;background:#f5f7fa;margin-bottom:16px;border-radius:8px">
   <p style="font-size:14px;color:#003366;font-weight:600">QR-arket er klar. Tryk Ctrl+P eller klik nedenfor for at printe.</p>
-  <button onclick="window.print()" style="margin-top:8px;padding:10px 24px;background:#003366;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600">\ud83d\udda8 Udskriv</button>
+  <button onclick="window.print()" style="margin-top:8px;padding:10px 24px;background:#003366;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600">🖨 Udskriv</button>
 </div>
 <div class="sheet-header">
-  <h1>Valhalla Gruppe \u2013 QR-koder</h1>
-  <p>Udskrevet ${new Date().toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' })} \u00b7 ${checked.length} labels \u00b7 ${size === 'small' ? 'Lille' : size === 'large' ? 'Stor' : 'Medium'}</p>
+  <h1>Valhalla Gruppe – QR-koder</h1>
+  <p>Udskrevet ${new Date().toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' })} · ${checked.length} labels · ${size === 'small' ? 'Lille' : size === 'large' ? 'Stor' : 'Medium'}</p>
 </div>
 <div class="qr-grid" id="qr-grid"></div>
 <script>
