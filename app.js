@@ -30,5 +30,4 @@ function initSupabase(url, key) {
   return sb;
 }
 
-// NOTE: This is a partial push test - the actual full content needs to be pushed
-// via the read-from-file approach
+PLACEHOLDER_FULL_CONTENT
